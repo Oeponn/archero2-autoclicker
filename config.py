@@ -32,6 +32,13 @@ STATE_TIMEOUT = 15         # Seconds to wait for expected screen transitions
 # ── Images ───────────────────────────────────────────────────────────────────
 IMAGES_DIR = "images"
 
+# Native iOS screenshot folder (iPhone 16 Pro: 1206×2622 px, same as WDA).
+# Crop a screenshot on your phone, AirDrop it here, reference it in IMAGE_PATHS
+# below — vision.py auto-scales it to TEMPLATE resolution at load time.
+NATIVE_IMAGES_DIR = "images_native"
+NATIVE_W = 1206   # Native / WDA screenshot width  (iPhone 16 Pro portrait)
+NATIVE_H = 2622   # Native / WDA screenshot height
+
 IMAGE_PATHS = {
     # Phase 1: Start / Ready
     "start":              os.path.join(IMAGES_DIR, "0_start_btn.png"),
