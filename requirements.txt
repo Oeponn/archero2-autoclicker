@@ -3,4 +3,5 @@ pyobjc-framework-Cocoa
 opencv-python
 Pillow
 numpy
+requests
 pyautogui          # kept for capture.py backward compat

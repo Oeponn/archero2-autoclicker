@@ -8,7 +8,12 @@ import os
 IPHONE_MIRRORING_WINDOW_NAME = "iPhone Mirroring"
 
 # ── Image Matching ───────────────────────────────────────────────────────────
-CONFIDENCE = 0.85  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
+CONFIDENCE = 0.65  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
+
+# Resolution the reference images were captured at (Mac retina window, 2x scale).
+# WDA screenshots are resized to this before template matching.
+TEMPLATE_W = 652
+TEMPLATE_H = 1440
 
 # ── Timing ───────────────────────────────────────────────────────────────────
 POLL_INTERVAL = 0.5        # Seconds between detection cycles in battle

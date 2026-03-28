@@ -11,8 +11,7 @@ import time
 from enum import Enum, auto
 
 import config
-import window as win_mod
-import clicker_quartz as clicker
+import clicker_wda as clicker
 import vision
 
 
@@ -30,10 +29,8 @@ class State(Enum):
 
 
 class GameStateMachine:
-    def __init__(self, templates: dict, scale: float, window_pid: int):
+    def __init__(self, templates: dict):
         self.templates = templates
-        self.scale = scale
-        self.pid = window_pid
         self.state = State.IDLE
         self.run_count = 0
         self._state_enter_time = time.time()
@@ -56,106 +53,127 @@ class GameStateMachine:
             self._log("scanning...")
             self._last_heartbeat = time.time()
 
-    # ── Window helpers ────────────────────────────────────────────────────────
+    # ── Screenshot ────────────────────────────────────────────────────────────
 
-    def _get_window_and_screenshot(self):
-        window_info = win_mod.find_window(config.IPHONE_MIRRORING_WINDOW_NAME)
-        if window_info is None:
-            return None
-        bounds = win_mod.get_bounds(window_info)
-        img = win_mod.screenshot(window_info)
+    def _get_screenshot(self):
+        img = clicker.screenshot()
         if img is None:
             return None
-        return window_info, bounds, img
+        return img
 
     # ── Click helpers ─────────────────────────────────────────────────────────
+    # WDA coordinates are in iPhone logical points (402×874).
+    # Screenshots from WDA are at the same logical resolution so
+    # px/py from image matching map 1:1 to WDA coordinates.
 
-    def _click_at_pixel(self, px: float, py: float, bounds: tuple) -> None:
-        """Convert window-pixel coords to screen coords and click via CGEventPostToPid."""
-        sx, sy = clicker.window_to_screen(px, py, bounds, self.scale)
-        self._log(f"  click → window px ({px:.0f}, {py:.0f})  screen pt ({sx:.0f}, {sy:.0f})")
-        clicker.click_at(sx, sy, pid=self.pid, delay=config.CLICK_DELAY)
+    def _click_at_pixel(self, px: float, py: float, img) -> None:
+        h, w = img.shape[:2]
+        self._log(f"  click → px ({px:.0f}, {py:.0f})")
+        clicker.click_at(px, py, w, h, delay=config.CLICK_DELAY)
 
-    def _click_skill_3_middle(self, banner_cx, banner_cy, banner_tw, banner_th, bounds):
+    def _click_skill_3_middle(self, banner_cx, banner_cy, banner_tw, banner_th, img):
         px = banner_cx + config.THREE_SKILL_MIDDLE_X_MULT * banner_tw
         py = banner_cy + config.THREE_SKILL_MIDDLE_Y_MULT * banner_th
         self._log(f"Clicking MIDDLE skill (banner {banner_cx:.0f},{banner_cy:.0f} size {banner_tw}×{banner_th})")
-        self._click_at_pixel(px, py, bounds)
+        self._click_at_pixel(px, py, img)
 
-    def _click_skill_2_left(self, banner_cx, banner_cy, banner_tw, banner_th, bounds):
+    def _click_skill_2_left(self, banner_cx, banner_cy, banner_tw, banner_th, img):
         px = banner_cx + config.TWO_SKILL_LEFT_X_MULT * banner_tw
         py = banner_cy + config.TWO_SKILL_LEFT_Y_MULT * banner_th
         self._log(f"Clicking LEFT skill (banner {banner_cx:.0f},{banner_cy:.0f} size {banner_tw}×{banner_th})")
-        self._click_at_pixel(px, py, bounds)
+        self._click_at_pixel(px, py, img)
 
-    def _swipe_up(self, bounds: tuple) -> None:
-        bx, by, bw, bh = bounds
-        start_sx = bx + bw / 2
-        start_sy = by + bh * 0.75
-        end_sy   = by + bh * (0.75 - config.SWIPE_UP_FRACTION)
-        self._log(f"Swipe UP  ({start_sx:.0f}, {start_sy:.0f}) → ({start_sx:.0f}, {end_sy:.0f})")
-        clicker.drag(start_sx, start_sy, start_sx, end_sy,
-                     pid=self.pid, duration=config.DRAG_DURATION)
+    def _swipe_up(self, img) -> None:
+        h, w = img.shape[:2]
+        start_px = w / 2
+        start_py = h * 0.75
+        end_py   = h * (0.75 - config.SWIPE_UP_FRACTION)
+        self._log(f"Swipe UP  ({start_px:.0f}, {start_py:.0f}) → ({start_px:.0f}, {end_py:.0f})")
+        clicker.drag(start_px, start_py, start_px, end_py, w, h,
+                     duration=config.DRAG_DURATION)
 
-    def _tap_screen(self, sx: float, sy: float, label: str = "") -> None:
-        self._log(f"Tap {label} ({sx:.0f}, {sy:.0f})")
-        clicker.click_at(sx, sy, pid=self.pid, delay=config.CLICK_DELAY)
+    def _tap_center(self, img) -> None:
+        h, w = img.shape[:2]
+        self._log(f"Tap center ({w//2}, {h//2})")
+        clicker.click_at(w / 2, h / 2, w, h, delay=config.CLICK_DELAY)
 
-    def _tap_window_center(self, bounds: tuple) -> None:
-        bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh / 2, "center")
-
-    def _tap_window_lower(self, bounds: tuple) -> None:
-        bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh * 0.85, "lower-center")
+    def _tap_lower(self, img) -> None:
+        h, w = img.shape[:2]
+        self._log(f"Tap lower-center ({w//2}, {h*0.85:.0f})")
+        clicker.click_at(w / 2, h * 0.85, w, h, delay=config.CLICK_DELAY)
 
     # ── Main tick ─────────────────────────────────────────────────────────────
 
     def tick(self) -> bool:
-        result = self._get_window_and_screenshot()
-        if result is None:
-            self._log("iPhone Mirroring window not found, waiting...")
+        img = self._get_screenshot()
+        if img is None:
+            self._log("WDA screenshot failed, waiting...")
             time.sleep(2)
             return True
 
-        _, bounds, img = result
-
         if self.state == State.IDLE:
-            return self._handle_idle(img, bounds)
+            return self._handle_idle(img)
         elif self.state == State.STARTING:
-            return self._handle_starting(img, bounds)
+            return self._handle_starting(img)
         elif self.state == State.TALENT_GLORY:
-            return self._handle_talent_glory(img, bounds)
+            return self._handle_talent_glory(img)
         elif self.state == State.ROULETTE:
-            return self._handle_roulette(img, bounds)
+            return self._handle_roulette(img)
         elif self.state == State.BATTLING:
-            return self._handle_battling(img, bounds)
+            return self._handle_battling(img)
         elif self.state == State.LEVEL_UP:
-            return self._handle_level_up(img, bounds)
+            return self._handle_level_up(img)
         elif self.state == State.VALKYRIE:
-            return self._handle_valkyrie(img, bounds)
+            return self._handle_valkyrie(img)
         elif self.state == State.ANGEL:
-            return self._handle_angel(img, bounds)
+            return self._handle_angel(img)
         elif self.state == State.DEVIL:
-            return self._handle_devil(img, bounds)
+            return self._handle_devil(img)
         elif self.state == State.ENDING:
-            return self._handle_ending(img, bounds)
+            return self._handle_ending(img)
         return True
 
     # ── State handlers ────────────────────────────────────────────────────────
 
-    def _handle_idle(self, img, bounds) -> bool:
+    def _handle_idle(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("start"))
         if match:
             cx, cy, tw, th = match
-            self._log(f"Found start button at window px ({cx}, {cy})  size {tw}×{th}")
-            self._click_at_pixel(cx, cy, bounds)
+            self._log(f"Found start button at ({cx}, {cy})  size {tw}×{th}")
+            self._click_at_pixel(cx, cy, img)
             time.sleep(config.POST_ACTION_DELAY)
             self.run_count += 1
             print(f"\n{'='*50}")
             print(f"  Run #{self.run_count} / {config.MAX_RUNS}")
             print(f"{'='*50}")
             self._set_state(State.STARTING)
+            return True
+
+        # Mid-game resume: bot started while a run is already in progress
+        if vision.find_template(img, self.templates.get("talent_glory")):
+            self._log("Detected mid-game: Talent Glory — resuming")
+            self.run_count += 1
+            self._set_state(State.TALENT_GLORY)
+            return True
+        if vision.find_template(img, self.templates.get("roulette_banner")):
+            self._log("Detected mid-game: Roulette — resuming")
+            self.run_count += 1
+            self._set_state(State.ROULETTE)
+            return True
+        if vision.find_template(img, self.templates.get("level_up")):
+            self._log("Detected mid-game: Level Up — resuming")
+            self.run_count += 1
+            self._set_state(State.LEVEL_UP)
+            return True
+        if vision.find_template(img, self.templates.get("devil")):
+            self._log("Detected mid-game: Devil — resuming")
+            self.run_count += 1
+            self._set_state(State.DEVIL)
+            return True
+        if vision.find_any(img, self.templates, ["tap_empty", "reward"]):
+            self._log("Detected mid-game: Ending screen — resuming")
+            self.run_count += 1
+            self._set_state(State.ENDING)
             return True
 
         if self._state_elapsed() > config.IDLE_TIMEOUT:
@@ -165,13 +183,11 @@ class GameStateMachine:
         self._heartbeat()
         return True
 
-    def _handle_starting(self, img, bounds) -> bool:
-        match = vision.find_template(img, self.templates.get("talent_glory"))
-        if match:
+    def _handle_starting(self, img) -> bool:
+        if vision.find_template(img, self.templates.get("talent_glory")):
             self._log("Talent Glory screen detected")
             self._set_state(State.TALENT_GLORY)
             return True
-
         if self._state_elapsed() > config.STATE_TIMEOUT:
             if vision.find_template(img, self.templates.get("roulette_banner")):
                 self._log("Skipped to Roulette")
@@ -180,17 +196,16 @@ class GameStateMachine:
             self._log("No talent glory / roulette — click may not have registered, retrying")
             self.run_count -= 1
             self._set_state(State.IDLE)
-
         self._heartbeat()
         return True
 
-    def _handle_talent_glory(self, img, bounds) -> bool:
+    def _handle_talent_glory(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("talent_glory"))
         if match:
             cx, cy, tw, th = match
-            self._click_skill_3_middle(cx, cy, tw, th, bounds)
+            self._click_skill_3_middle(cx, cy, tw, th, img)
             time.sleep(config.POST_ACTION_DELAY)
-            self._swipe_up(bounds)
+            self._swipe_up(img)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.ROULETTE)
         elif self._state_elapsed() > config.STATE_TIMEOUT:
@@ -200,31 +215,29 @@ class GameStateMachine:
             self._heartbeat()
         return True
 
-    def _handle_roulette(self, img, bounds) -> bool:
+    def _handle_roulette(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("roulette_start"))
         if match:
             cx, cy, tw, th = match
-            self._log(f"Found Roulette Start at window px ({cx}, {cy})")
-            self._click_at_pixel(cx, cy, bounds)
+            self._log(f"Found Roulette Start at ({cx}, {cy})")
+            self._click_at_pixel(cx, cy, img)
             time.sleep(config.ROULETTE_SPIN_WAIT)
-            self._tap_window_center(bounds)
+            self._tap_center(img)
             time.sleep(1.0)
-            self._tap_window_center(bounds)
+            self._tap_center(img)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
-
         if vision.find_template(img, self.templates.get("roulette_banner")):
             self._log("Roulette banner visible, no Start button — tapping center")
-            self._tap_window_center(bounds)
+            self._tap_center(img)
             time.sleep(config.ROULETTE_SPIN_WAIT)
-            self._tap_window_center(bounds)
+            self._tap_center(img)
             time.sleep(1.0)
-            self._tap_window_center(bounds)
+            self._tap_center(img)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
-
         if self._state_elapsed() > config.STATE_TIMEOUT:
             self._log("Roulette not found, assuming battle started")
             self._set_state(State.BATTLING)
@@ -232,10 +245,9 @@ class GameStateMachine:
             self._heartbeat()
         return True
 
-    def _handle_battling(self, img, bounds) -> bool:
-        ending = vision.find_any(img, self.templates, ["tap_empty", "reward"])
-        if ending:
-            self._log(f"Ending screen: '{ending[0]}'")
+    def _handle_battling(self, img) -> bool:
+        if vision.find_any(img, self.templates, ["tap_empty", "reward"]):
+            self._log("Ending screen detected")
             self._set_state(State.ENDING)
             return True
         if vision.find_template(img, self.templates.get("level_up")):
@@ -257,39 +269,39 @@ class GameStateMachine:
         self._heartbeat()
         return True
 
-    def _handle_level_up(self, img, bounds) -> bool:
+    def _handle_level_up(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("level_up"))
         if match:
             cx, cy, tw, th = match
-            self._click_skill_3_middle(cx, cy, tw, th, bounds)
+            self._click_skill_3_middle(cx, cy, tw, th, img)
             time.sleep(config.POST_ACTION_DELAY)
         self._set_state(State.BATTLING)
         return True
 
-    def _handle_valkyrie(self, img, bounds) -> bool:
+    def _handle_valkyrie(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("valkyrie"))
         if match:
             cx, cy, tw, th = match
-            self._click_skill_2_left(cx, cy, tw, th, bounds)
+            self._click_skill_2_left(cx, cy, tw, th, img)
             time.sleep(config.POST_ACTION_DELAY)
         self._set_state(State.BATTLING)
         return True
 
-    def _handle_angel(self, img, bounds) -> bool:
+    def _handle_angel(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("angel"))
         if match:
             cx, cy, tw, th = match
-            self._click_skill_2_left(cx, cy, tw, th, bounds)
+            self._click_skill_2_left(cx, cy, tw, th, img)
             time.sleep(config.POST_ACTION_DELAY)
         self._set_state(State.BATTLING)
         return True
 
-    def _handle_devil(self, img, bounds) -> bool:
+    def _handle_devil(self, img) -> bool:
         match = vision.find_template(img, self.templates.get("reject"))
         if match:
             cx, cy, tw, th = match
-            self._log(f"Found Reject at window px ({cx}, {cy})")
-            self._click_at_pixel(cx, cy, bounds)
+            self._log(f"Found Reject at ({cx}, {cy})")
+            self._click_at_pixel(cx, cy, img)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
         elif self._state_elapsed() > config.STATE_TIMEOUT:
@@ -299,17 +311,13 @@ class GameStateMachine:
             self._heartbeat()
         return True
 
-    def _handle_ending(self, img, bounds) -> bool:
-        self._log("Tapping to dismiss ending screens (3×)")
-        for i in range(1, 4):
-            self._tap_window_lower(bounds)
-            self._log(f"Tap {i}/3")
-            time.sleep(config.ENDING_TAP_DELAY)
-
+    def _handle_ending(self, img) -> bool:
+        self._log("Tapping to dismiss ending screen")
+        self._tap_lower(img)
+        time.sleep(config.ENDING_TAP_DELAY)
         print(f"  Run #{self.run_count} complete.")
         if self.run_count >= config.MAX_RUNS:
             print(f"\n  Reached max runs ({config.MAX_RUNS}). Stopping.")
             return False
-
         self._set_state(State.IDLE)
         return True

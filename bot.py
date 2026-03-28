@@ -25,9 +25,8 @@ import signal
 import time
 
 import config
-import window as win_mod
 import vision
-import clicker_quartz as clicker
+import clicker_wda as clicker
 from state_machine import GameStateMachine
 
 
@@ -148,32 +147,15 @@ def main() -> None:
         sys.exit(1)
     print("✅ All reference images found.")
 
-    # Find iPhone Mirroring window
-    print(f"\nLooking for '{config.IPHONE_MIRRORING_WINDOW_NAME}' window...")
-    window_info = None
-    for _ in range(10):
-        window_info = win_mod.find_window(config.IPHONE_MIRRORING_WINDOW_NAME)
-        if window_info:
-            break
-        time.sleep(1)
-
-    if window_info is None:
-        print(f"❌ Could not find '{config.IPHONE_MIRRORING_WINDOW_NAME}' window.")
-        print("   Make sure iPhone Mirroring is open and visible on your desktop.")
+    # Connect to WDA
+    print("\nConnecting to WebDriverAgent (WDA)...")
+    if not clicker.init():
+        print("❌ Could not connect to WDA on http://localhost:8100")
+        print("   Make sure two background tabs are running:")
+        print("   Tab 1: xcodebuild test -scheme WebDriverAgentRunner ...")
+        print("   Tab 2: iproxy 8100 8100")
         sys.exit(1)
-
-    bounds = win_mod.get_bounds(window_info)
-    scale = win_mod.get_scale_factor()
-    print(f"✅ Found window at ({bounds[0]:.0f}, {bounds[1]:.0f}), "
-          f"size {bounds[2]:.0f}×{bounds[3]:.0f}, scale={scale:.1f}x")
-
-    # Test screenshot
-    test_img = win_mod.screenshot(window_info)
-    if test_img is None:
-        print("❌ Failed to capture window screenshot.")
-        print("   Check Screen Recording permission.")
-        sys.exit(1)
-    print(f"✅ Screenshot captured: {test_img.shape[1]}×{test_img.shape[0]} pixels")
+    print("✅ WDA ready.")
 
     # Load templates
     print("\nLoading reference images...")
@@ -192,14 +174,13 @@ def main() -> None:
     print()
     print("─" * 55)
     print("  RUNNING — you can use your computer normally.")
-    print("  Keep iPhone Mirroring visible (not full-screen).")
+    print("  iPhone Mirroring does not need to be open.")
     print("  Press Ctrl+C in this terminal to stop.")
     print("─" * 55)
     print()
 
     # Create state machine
-    pid = win_mod.get_pid(window_info)
-    sm = GameStateMachine(templates=templates, scale=scale, window_pid=pid)
+    sm = GameStateMachine(templates=templates)
 
     # Main loop
     try:

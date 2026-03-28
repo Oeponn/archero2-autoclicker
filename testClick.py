@@ -217,6 +217,50 @@ def mode_windowtarget(info, bounds, scale, match):
     print("  Done — cursor should NOT have moved. Did the game respond?")
 
 
+# ── No-cursor click (CGAssociateMouseAndMouseCursorPosition) ─────────────────
+
+def mode_nocursor(info, bounds, scale, match):
+    """
+    Decouple cursor from mouse events, post the HID click, re-couple.
+    The cursor is pinned in place — it never visually moves.
+    Still needs iPhone Mirroring to be frontmost to receive the click.
+    """
+    import Quartz as Q
+    import clicker_quartz as clicker
+    from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
+
+    cx, cy, tw, th = match
+    sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
+    pid    = win_mod.get_pid(info)
+    ws     = NSWorkspace.sharedWorkspace()
+    prev   = ws.frontmostApplication()
+    im_app = next((a for a in ws.runningApplications()
+                   if a.processIdentifier() == pid), None)
+
+    print(f"  Click target: ({sx:.0f}, {sy:.0f})")
+    print(f"  Activating iPhone Mirroring...")
+    if im_app:
+        im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+        time.sleep(0.05)
+
+    print(f"  Decoupling cursor from mouse events...")
+    Q.CGAssociateMouseAndMouseCursorPosition(False)
+
+    point = Q.CGPointMake(sx, sy)
+    Q.CGEventPost(Q.kCGHIDEventTap,
+        Q.CGEventCreateMouseEvent(None, Q.kCGEventLeftMouseDown, point, Q.kCGMouseButtonLeft))
+    time.sleep(0.01)
+    Q.CGEventPost(Q.kCGHIDEventTap,
+        Q.CGEventCreateMouseEvent(None, Q.kCGEventLeftMouseUp, point, Q.kCGMouseButtonLeft))
+
+    Q.CGAssociateMouseAndMouseCursorPosition(True)
+    print(f"  Cursor re-coupled.")
+
+    if prev:
+        prev.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+    print("  Done — cursor should not have moved. Did the game respond?")
+
+
 # ── Warp test ─────────────────────────────────────────────────────────────────
 
 def mode_warptest(info, bounds, scale):
@@ -262,7 +306,7 @@ def mode_warptest(info, bounds, scale):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-MODES = ("info", "pyautogui", "quartz", "activate", "warptest", "windowtarget")
+MODES = ("info", "pyautogui", "quartz", "activate", "warptest", "windowtarget", "nocursor")
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in MODES:
@@ -320,6 +364,9 @@ def main():
     elif method == "windowtarget":
         print("── Window-targeted CGEvent (no cursor, no focus) ──")
         mode_windowtarget(info, bounds, scale, match)
+    elif method == "nocursor":
+        print("── CGAssociateMouseAndMouseCursorPosition (pinned cursor) ──")
+        mode_nocursor(info, bounds, scale, match)
 
 
 if __name__ == "__main__":
