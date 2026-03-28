@@ -10,6 +10,7 @@ States:
 import time
 from enum import Enum, auto
 
+from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
 import config
 import window as win_mod
 import clicker_quartz as clicker
@@ -30,14 +31,23 @@ class State(Enum):
 
 
 class GameStateMachine:
-    def __init__(self, templates: dict, scale: float):
+    def __init__(self, templates: dict, scale: float, window_pid: int):
         self.templates = templates
         self.scale = scale
+        self.window_pid = window_pid
         self.state = State.IDLE
         self.run_count = 0
         self._state_enter_time = time.time()
         self._last_state_log = None
-        self._last_heartbeat = 0.0   # for periodic scan messages
+        self._last_heartbeat = 0.0
+
+        # Resolve NSRunningApplication objects once at startup
+        ws = NSWorkspace.sharedWorkspace()
+        self._im_app = None
+        for app in ws.runningApplications():
+            if app.processIdentifier() == window_pid:
+                self._im_app = app
+                break
 
     def _log(self, msg: str) -> None:
         print(f"  [{self.state.name}] {msg}", flush=True)
@@ -69,13 +79,34 @@ class GameStateMachine:
             return None
         return window_info, bounds, img
 
+    # ── Activate helpers ──────────────────────────────────────────────────────
+
+    def _activate_im(self) -> object:
+        """Bring iPhone Mirroring to front. Returns the previously active app."""
+        ws = NSWorkspace.sharedWorkspace()
+        prev = ws.frontmostApplication()
+        if self._im_app:
+            self._im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+            time.sleep(0.15)   # let it come to front
+        return prev
+
+    def _restore_app(self, prev_app) -> None:
+        """Restore the previously active app to front."""
+        if prev_app and prev_app.processIdentifier() != self.window_pid:
+            prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+
     # ── Click helpers ─────────────────────────────────────────────────────────
 
     def _click_at_pixel(self, px: float, py: float, bounds: tuple) -> None:
-        """Convert window-pixel coords to screen coords, log, and click."""
+        """
+        Activate iPhone Mirroring, click at window-pixel coords, restore focus.
+        Uses kCGEventSourceStatePrivate so the cursor does not visibly move.
+        """
         sx, sy = clicker.window_to_screen(px, py, bounds, self.scale)
         self._log(f"  click → window px ({px:.0f}, {py:.0f})  screen pt ({sx:.0f}, {sy:.0f})")
+        prev = self._activate_im()
         clicker.click_at(sx, sy, delay=config.CLICK_DELAY)
+        self._restore_app(prev)
 
     def _click_skill_3_middle(self, banner_cx, banner_cy, banner_tw, banner_th, bounds):
         px = banner_cx + config.THREE_SKILL_MIDDLE_X_MULT * banner_tw
@@ -95,19 +126,21 @@ class GameStateMachine:
         start_sy = by + bh * 0.75
         end_sy   = by + bh * (0.75 - config.SWIPE_UP_FRACTION)
         self._log(f"Swipe UP  screen ({start_sx:.0f}, {start_sy:.0f}) → ({start_sx:.0f}, {end_sy:.0f})")
+        prev = self._activate_im()
         clicker.drag(start_sx, start_sy, start_sx, end_sy, duration=config.DRAG_DURATION)
+        self._restore_app(prev)
 
-    def _tap_screen(self, sx: float, sy: float, label: str = "") -> None:
+    def _tap_screen(self, sx: float, sy: float, label: str = "", prev_app=None) -> None:
         self._log(f"Tap {label} screen ({sx:.0f}, {sy:.0f})")
         clicker.click_at(sx, sy, delay=config.CLICK_DELAY)
 
-    def _tap_window_center(self, bounds: tuple) -> None:
+    def _tap_window_center(self, bounds: tuple, prev_app=None) -> None:
         bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh / 2, "center")
+        self._tap_screen(bx + bw / 2, by + bh / 2, "center", prev_app)
 
-    def _tap_window_lower(self, bounds: tuple) -> None:
+    def _tap_window_lower(self, bounds: tuple, prev_app=None) -> None:
         bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh * 0.85, "lower-center")
+        self._tap_screen(bx + bw / 2, by + bh * 0.85, "lower-center", prev_app)
 
     # ── Main tick ─────────────────────────────────────────────────────────────
 
@@ -208,22 +241,26 @@ class GameStateMachine:
         if match:
             cx, cy, tw, th = match
             self._log(f"Found Roulette Start at window px ({cx}, {cy})")
+            prev = self._activate_im()
             self._click_at_pixel(cx, cy, bounds)
             time.sleep(config.ROULETTE_SPIN_WAIT)
             self._tap_window_center(bounds)
             time.sleep(1.0)
             self._tap_window_center(bounds)
+            self._restore_app(prev)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
 
         if vision.find_template(img, self.templates.get("roulette_banner")):
             self._log("Roulette banner found but no Start button — tapping center")
+            prev = self._activate_im()
             self._tap_window_center(bounds)
             time.sleep(config.ROULETTE_SPIN_WAIT)
             self._tap_window_center(bounds)
             time.sleep(1.0)
             self._tap_window_center(bounds)
+            self._restore_app(prev)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
@@ -314,10 +351,12 @@ class GameStateMachine:
 
     def _handle_ending(self, img, bounds) -> bool:
         self._log("Tapping to dismiss ending screens (3×)")
+        prev = self._activate_im()
         for i in range(1, 4):
             self._tap_window_lower(bounds)
             self._log(f"Tap {i}/3")
             time.sleep(config.ENDING_TAP_DELAY)
+        self._restore_app(prev)
 
         print(f"  Run #{self.run_count} complete.")
 

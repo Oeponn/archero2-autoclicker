@@ -2,24 +2,22 @@
 testClick.py — Diagnose click delivery to iPhone Mirroring.
 
 Usage:
-    python testClick.py pyautogui   # hijacks mouse, clicks start button once
-    python testClick.py quartz      # Quartz CGEventPost, no cursor movement
-
-Both methods find the start button via image matching first, then click it.
-Watch the game to see which method (if either) actually registers.
+    python testClick.py info        # show window info + what's at the target coords
+    python testClick.py pyautogui   # hijacks mouse, double-click (focus then press)
+    python testClick.py quartz      # CGEventPost at target coords (cursor moves)
+    python testClick.py activate    # briefly bring iPhone Mirroring to front, click, restore focus
 """
 
 import sys
 import time
 
-import cv2
 import window as win_mod
 import vision
 import config
 
 
 def find_start(templates):
-    """Screenshot the window and find the start button. Returns (bounds, img, match) or None."""
+    """Screenshot the window and find the start button. Returns (info, bounds, scale, img, match)."""
     info = win_mod.find_window(config.IPHONE_MIRRORING_WINDOW_NAME)
     if info is None:
         print("❌ iPhone Mirroring window not found.")
@@ -34,41 +32,164 @@ def find_start(templates):
     if match is None:
         print("❌ Start button not found in screenshot — is it visible on screen?")
         return None
-    return bounds, scale, img, match
+    return info, bounds, scale, img, match
+
+
+def print_target(bounds, scale, match):
+    import clicker_quartz as clicker
+    cx, cy, tw, th = match
+    sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
+    print(f"   window pixel : ({cx}, {cy})  size {tw}×{th}")
+    print(f"   screen point : ({sx:.0f}, {sy:.0f})")
+    print(f"   window bounds: x={bounds[0]:.0f} y={bounds[1]:.0f} "
+          f"w={bounds[2]:.0f} h={bounds[3]:.0f}")
+    print(f"   retina scale : {scale}x")
+    return sx, sy
+
+
+# ── info mode ─────────────────────────────────────────────────────────────────
+
+def mode_info(info, bounds, scale, match):
+    import Quartz
+    from AppKit import NSWorkspace
+
+    print("\n── Window info ──────────────────────────────────────")
+    import clicker_quartz as clicker
+    sx, sy = print_target(bounds, scale, match)
+
+    pid = win_mod.get_pid(info)
+    print(f"   iPhone Mirroring PID: {pid}")
+
+    # Check Accessibility permission
+    print(f"\n── Accessibility ────────────────────────────────────")
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+        trusted = AXIsProcessTrusted()
+    except Exception:
+        # Fall back to a Quartz-level check
+        try:
+            trusted = Quartz.CGPreflightScreenCaptureAccess()
+            print("   (using CGPreflightScreenCaptureAccess as proxy)")
+        except Exception:
+            trusted = None
+    print(f"   Trusted: {trusted}")
+    if trusted is False:
+        print("   ⚠️  Not trusted — clicks may be silently dropped.")
+        print("   Fix: System Settings → Privacy & Security → Accessibility → add Terminal")
+
+    # List all on-screen windows and find what's at the target coordinates
+    print(f"\n── Windows at/near target ({sx:.0f}, {sy:.0f}) ─────────────")
+    window_list = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID,
+    )
+    hits = []
+    for w in (window_list or []):
+        b = w.get(Quartz.kCGWindowBounds, {})
+        wx, wy = b.get("X", 0), b.get("Y", 0)
+        ww, wh = b.get("Width", 0), b.get("Height", 0)
+        if wx <= sx <= wx + ww and wy <= sy <= wy + wh:
+            hits.append(w)
+
+    if hits:
+        for w in hits:
+            owner = w.get(Quartz.kCGWindowOwnerName, "?")
+            name  = w.get(Quartz.kCGWindowName, "")
+            layer = w.get(Quartz.kCGWindowLayer, "?")
+            b     = w.get(Quartz.kCGWindowBounds, {})
+            print(f"   ✓ '{owner}' / '{name}'  layer={layer}  "
+                  f"bounds=({b.get('X',0):.0f},{b.get('Y',0):.0f} "
+                  f"{b.get('Width',0):.0f}×{b.get('Height',0):.0f})")
+    else:
+        print("   (no windows found at target coords)")
+
+    # Frontmost app
+    front = NSWorkspace.sharedWorkspace().frontmostApplication()
+    print(f"\n── Frontmost app ────────────────────────────────────")
+    print(f"   {front.localizedName()}  (PID {front.processIdentifier()})")
 
 
 # ── pyautogui method ──────────────────────────────────────────────────────────
 
-def click_pyautogui(bounds, scale, match):
+def mode_pyautogui(bounds, scale, match):
     import pyautogui
-    cx, cy, tw, th = match
     import clicker_quartz as clicker
+    cx, cy, tw, th = match
     sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
-    print(f"  pyautogui click 1/2 at screen ({sx:.0f}, {sy:.0f}) — focusing window")
+    print(f"  Click 1/2 at ({sx:.0f}, {sy:.0f}) — focusing window")
     pyautogui.click(sx, sy)
     time.sleep(0.3)
-    print(f"  pyautogui click 2/2 at screen ({sx:.0f}, {sy:.0f}) — pressing button")
+    print(f"  Click 2/2 at ({sx:.0f}, {sy:.0f}) — pressing button")
     pyautogui.click(sx, sy)
-    print("  Done — did the game respond?")
+    print("  Done.")
 
 
-# ── Quartz method ─────────────────────────────────────────────────────────────
+# ── Quartz CGEventPost ────────────────────────────────────────────────────────
 
-def click_quartz(bounds, scale, match):
+def mode_quartz(bounds, scale, match):
     import clicker_quartz as clicker
     cx, cy, tw, th = match
     sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
-    print(f"  Quartz CGEventPost click at screen ({sx:.0f}, {sy:.0f})")
+    print(f"  CGEventPost click at ({sx:.0f}, {sy:.0f})")
     clicker.click_at(sx, sy, delay=0.1)
+    print("  Done.")
+
+
+# ── Activate + click + restore ────────────────────────────────────────────────
+
+def mode_activate(info, bounds, scale, match):
+    """
+    Briefly bring iPhone Mirroring to front, click, restore previous app.
+    The flash is ~300ms — fast enough to barely notice.
+    """
+    import clicker_quartz as clicker
+    from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
+    import AppKit
+
+    cx, cy, tw, th = match
+    sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
+
+    # Remember the currently active app so we can restore it
+    ws = NSWorkspace.sharedWorkspace()
+    prev_app = ws.frontmostApplication()
+    print(f"  Current frontmost app: {prev_app.localizedName()}")
+
+    # Find the iPhone Mirroring NSRunningApplication
+    pid = win_mod.get_pid(info)
+    im_app = None
+    for app in ws.runningApplications():
+        if app.processIdentifier() == pid:
+            im_app = app
+            break
+
+    if im_app is None:
+        print("❌ Could not find iPhone Mirroring in running applications.")
+        return
+
+    print(f"  Activating '{im_app.localizedName()}' (PID {pid})...")
+    im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+    time.sleep(0.2)   # let it come to front
+
+    print(f"  Clicking at ({sx:.0f}, {sy:.0f})")
+    clicker.click_at(sx, sy, delay=0.1)
+
+    time.sleep(0.1)
+
+    print(f"  Restoring '{prev_app.localizedName()}'...")
+    prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+
     print("  Done — did the game respond?")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+MODES = ("info", "pyautogui", "quartz", "activate")
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("pyautogui", "quartz"):
-        print("Usage:  python testClick.py pyautogui")
-        print("        python testClick.py quartz")
+    if len(sys.argv) < 2 or sys.argv[1] not in MODES:
+        print("Usage:")
+        for m in MODES:
+            print(f"  python testClick.py {m}")
         sys.exit(1)
 
     method = sys.argv[1]
@@ -81,26 +202,26 @@ def main():
     if result is None:
         sys.exit(1)
 
-    bounds, scale, img, match = result
-    cx, cy, tw, th = match
+    info, bounds, scale, img, match = result
     print(f"✅ Found start button:")
-    print(f"   window pixel : ({cx}, {cy})  size {tw}×{th}")
+    print_target(bounds, scale, match)
 
-    import clicker_quartz as clicker
-    sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
-    print(f"   screen point : ({sx:.0f}, {sy:.0f})")
-    print(f"   window bounds: x={bounds[0]:.0f} y={bounds[1]:.0f} w={bounds[2]:.0f} h={bounds[3]:.0f}")
-    print(f"   retina scale : {scale}x")
-    print()
-    print("Clicking in 3 seconds — switch to iPhone Mirroring now...")
+    if method == "info":
+        mode_info(info, bounds, scale, match)
+        return
+
+    print(f"\nStarting in 3 seconds...")
     time.sleep(3)
 
     if method == "pyautogui":
         print("── pyautogui (mouse hijack) ──")
-        click_pyautogui(bounds, scale, match)
-    else:
-        print("── Quartz CGEventPost (background) ──")
-        click_quartz(bounds, scale, match)
+        mode_pyautogui(bounds, scale, match)
+    elif method == "quartz":
+        print("── Quartz CGEventPost ──")
+        mode_quartz(bounds, scale, match)
+    elif method == "activate":
+        print("── Activate + click + restore ──")
+        mode_activate(info, bounds, scale, match)
 
 
 if __name__ == "__main__":

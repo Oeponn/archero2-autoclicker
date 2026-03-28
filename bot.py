@@ -198,7 +198,8 @@ def main() -> None:
     print()
 
     # Create state machine
-    sm = GameStateMachine(templates=templates, scale=scale)
+    pid = win_mod.get_pid(window_info)
+    sm = GameStateMachine(templates=templates, scale=scale, window_pid=pid)
 
     # Main loop
     try:

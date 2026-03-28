@@ -1,7 +1,8 @@
 """
 clicker_quartz.py — Quartz-based click and drag posting.
 
-Posts mouse events directly via CGEventPost without moving the visible cursor.
+Uses kCGEventSourceStatePrivate so events are delivered to the target window
+WITHOUT updating the global cursor position — your mouse stays put.
 All coordinates are in Quartz screen points (origin at top-left of main display).
 """
 
@@ -9,24 +10,32 @@ import time
 import Quartz
 
 
+def _private_source():
+    """
+    Create an event source with private state.
+    Events created with this source do NOT update the global cursor position,
+    so your real mouse cursor stays wherever it is.
+    """
+    return Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
+
+
 def click_at(screen_x: float, screen_y: float, delay: float = 0.05) -> None:
     """
-    Post a left-click (mousedown + mouseup) at the given screen coordinates.
-    Does NOT move the visible mouse cursor.
+    Post a left-click at the given screen coordinates.
+    The visible mouse cursor does NOT move.
     """
-    point = Quartz.CGPointMake(screen_x, screen_y)
+    source = _private_source()
+    point  = Quartz.CGPointMake(screen_x, screen_y)
 
-    # Mouse down
     event_down = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventLeftMouseDown, point, Quartz.kCGMouseButtonLeft
+        source, Quartz.kCGEventLeftMouseDown, point, Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_down)
 
     time.sleep(delay)
 
-    # Mouse up
     event_up = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventLeftMouseUp, point, Quartz.kCGMouseButtonLeft
+        source, Quartz.kCGEventLeftMouseUp, point, Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_up)
 
@@ -41,35 +50,31 @@ def drag(
 ) -> None:
     """
     Post a click-and-drag from (start_x, start_y) to (end_x, end_y).
-    Interpolates intermediate points over `duration` seconds.
+    The visible mouse cursor does NOT move.
     """
+    source      = _private_source()
     start_point = Quartz.CGPointMake(start_x, start_y)
 
-    # Mouse down at start
     event_down = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventLeftMouseDown, start_point, Quartz.kCGMouseButtonLeft
+        source, Quartz.kCGEventLeftMouseDown, start_point, Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_down)
 
     step_delay = duration / steps
-
-    # Interpolate drag points
     for i in range(1, steps + 1):
-        t = i / steps
+        t  = i / steps
         ix = start_x + (end_x - start_x) * t
         iy = start_y + (end_y - start_y) * t
-        point = Quartz.CGPointMake(ix, iy)
-
         event_drag = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseDragged, point, Quartz.kCGMouseButtonLeft
+            source, Quartz.kCGEventLeftMouseDragged,
+            Quartz.CGPointMake(ix, iy), Quartz.kCGMouseButtonLeft
         )
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_drag)
         time.sleep(step_delay)
 
-    # Mouse up at end
-    end_point = Quartz.CGPointMake(end_x, end_y)
     event_up = Quartz.CGEventCreateMouseEvent(
-        None, Quartz.kCGEventLeftMouseUp, end_point, Quartz.kCGMouseButtonLeft
+        source, Quartz.kCGEventLeftMouseUp,
+        Quartz.CGPointMake(end_x, end_y), Quartz.kCGMouseButtonLeft
     )
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_up)
 
@@ -82,19 +87,7 @@ def window_to_screen(
 ) -> tuple[float, float]:
     """
     Convert window-pixel coordinates (from a screenshot) to screen points.
-
-    The screenshot from CGWindowListCreateImage is in native pixels (2x on Retina),
-    but CGEventPost expects screen points. So we divide by the scale factor.
-
-    Args:
-        wx, wy: Pixel coordinates within the window screenshot
-        window_bounds: (x, y, width, height) in screen points
-        scale: Retina scale factor (e.g. 2.0)
-
-    Returns:
-        (screen_x, screen_y) in Quartz screen points
+    Screenshot pixels are 2x on Retina; divide by scale to get screen points.
     """
     bx, by, _, _ = window_bounds
-    screen_x = bx + wx / scale
-    screen_y = by + wy / scale
-    return screen_x, screen_y
+    return bx + wx / scale, by + wy / scale
