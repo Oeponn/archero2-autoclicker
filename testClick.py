@@ -182,9 +182,51 @@ def mode_activate(info, bounds, scale, match):
     print("  Done — did the game respond? (cursor should be back where it was)")
 
 
+# ── Warp test ─────────────────────────────────────────────────────────────────
+
+def mode_warptest(info, bounds, scale):
+    """Click randomly near window center every second for 10s, logging each click."""
+    import random
+    from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
+
+    bx, by, bw, bh = bounds
+    pid = win_mod.get_pid(info)
+    ws  = NSWorkspace.sharedWorkspace()
+
+    # Resolve apps once
+    im_app   = next((a for a in ws.runningApplications() if a.processIdentifier() == pid), None)
+    prev_app = ws.frontmostApplication()
+
+    print(f"  Window center: screen ({bx + bw/2:.0f}, {by + bh/2:.0f})")
+    print(f"  Clicks will land within ±15% of center")
+    print()
+
+    for i in range(1, 11):
+        # Random offset within ±15% of window size around center
+        jx = random.uniform(-bw * 0.15, bw * 0.15)
+        jy = random.uniform(-bh * 0.15, bh * 0.15)
+        sx = bx + bw / 2 + jx
+        sy = by + bh / 2 + jy
+
+        # Activate, click, restore
+        if im_app:
+            im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+            time.sleep(0.15)
+
+        print(f"  [{i:02d}/10] click at screen ({sx:.0f}, {sy:.0f})", flush=True)
+        clicker.click_at(sx, sy, delay=0.05)
+
+        if prev_app:
+            prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+
+        time.sleep(1.0)
+
+    print("\n  Done — how did the cursor feel?")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-MODES = ("info", "pyautogui", "quartz", "activate")
+MODES = ("info", "pyautogui", "quartz", "activate", "warptest")
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in MODES:
@@ -209,6 +251,13 @@ def main():
 
     if method == "info":
         mode_info(info, bounds, scale, match)
+        return
+
+    if method == "warptest":
+        print(f"\nStarting warp test in 3 seconds — 10 clicks, 1 per second...")
+        time.sleep(3)
+        print("── Warp test ──")
+        mode_warptest(info, bounds, scale)
         return
 
     print(f"\nStarting in 3 seconds...")
