@@ -1,10 +1,13 @@
 """
 clicker_quartz.py — Quartz-based click and drag posting.
 
-Uses CGEventPostToPid to deliver events directly to a specific process.
-This does NOT move the visible mouse cursor and does NOT require the
-target window to be frontmost.
+iPhone Mirroring requires events through the real HID system (kCGHIDEventTap).
+To avoid the cursor visibly jumping, we:
+  1. Save the current cursor position
+  2. Post the click via HID (cursor moves briefly)
+  3. Immediately warp the cursor back
 
+The cursor is away from its original position for ~50ms — imperceptible.
 All coordinates are in Quartz screen points (origin at top-left of main display).
 """
 
@@ -12,26 +15,36 @@ import time
 import Quartz
 
 
-def click_at(screen_x: float, screen_y: float, pid: int, delay: float = 0.05) -> None:
+def _get_cursor_pos() -> Quartz.CGPoint:
+    """Return the current cursor position as a CGPoint."""
+    return Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+
+
+def _post_hid(event) -> None:
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+
+
+def click_at(screen_x: float, screen_y: float, pid: int = None, delay: float = 0.05) -> None:
     """
-    Post a left-click at the given screen coordinates directly to `pid`.
-    The visible mouse cursor does NOT move.
-    The target window does NOT need to be frontmost.
+    Click at the given screen coordinates via HID event tap.
+    Cursor warps back to its original position immediately after.
+    `pid` is accepted for API compatibility but not used (HID tap is required).
     """
-    source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
-    point  = Quartz.CGPointMake(screen_x, screen_y)
+    original = _get_cursor_pos()
+    point = Quartz.CGPointMake(screen_x, screen_y)
 
     event_down = Quartz.CGEventCreateMouseEvent(
-        source, Quartz.kCGEventLeftMouseDown, point, Quartz.kCGMouseButtonLeft
+        None, Quartz.kCGEventLeftMouseDown, point, Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPostToPid(pid, event_down)
-
+    _post_hid(event_down)
     time.sleep(delay)
-
     event_up = Quartz.CGEventCreateMouseEvent(
-        source, Quartz.kCGEventLeftMouseUp, point, Quartz.kCGMouseButtonLeft
+        None, Quartz.kCGEventLeftMouseUp, point, Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPostToPid(pid, event_up)
+    _post_hid(event_up)
+
+    # Snap cursor back — happens so fast it's invisible
+    Quartz.CGWarpMouseCursorPosition(original)
 
 
 def drag(
@@ -39,21 +52,22 @@ def drag(
     start_y: float,
     end_x: float,
     end_y: float,
-    pid: int,
+    pid: int = None,
     duration: float = 0.3,
     steps: int = 20,
 ) -> None:
     """
-    Post a click-and-drag from (start_x, start_y) to (end_x, end_y) directly to `pid`.
-    The visible mouse cursor does NOT move.
+    Click-and-drag via HID event tap.
+    Cursor warps back to its original position after the drag completes.
+    `pid` is accepted for API compatibility but not used.
     """
-    source      = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
-    start_point = Quartz.CGPointMake(start_x, start_y)
+    original = _get_cursor_pos()
 
     event_down = Quartz.CGEventCreateMouseEvent(
-        source, Quartz.kCGEventLeftMouseDown, start_point, Quartz.kCGMouseButtonLeft
+        None, Quartz.kCGEventLeftMouseDown,
+        Quartz.CGPointMake(start_x, start_y), Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPostToPid(pid, event_down)
+    _post_hid(event_down)
 
     step_delay = duration / steps
     for i in range(1, steps + 1):
@@ -61,17 +75,19 @@ def drag(
         ix = start_x + (end_x - start_x) * t
         iy = start_y + (end_y - start_y) * t
         event_drag = Quartz.CGEventCreateMouseEvent(
-            source, Quartz.kCGEventLeftMouseDragged,
+            None, Quartz.kCGEventLeftMouseDragged,
             Quartz.CGPointMake(ix, iy), Quartz.kCGMouseButtonLeft
         )
-        Quartz.CGEventPostToPid(pid, event_drag)
+        _post_hid(event_drag)
         time.sleep(step_delay)
 
     event_up = Quartz.CGEventCreateMouseEvent(
-        source, Quartz.kCGEventLeftMouseUp,
+        None, Quartz.kCGEventLeftMouseUp,
         Quartz.CGPointMake(end_x, end_y), Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPostToPid(pid, event_up)
+    _post_hid(event_up)
+
+    Quartz.CGWarpMouseCursorPosition(original)
 
 
 def window_to_screen(
@@ -80,9 +96,6 @@ def window_to_screen(
     window_bounds: tuple[float, float, float, float],
     scale: float,
 ) -> tuple[float, float]:
-    """
-    Convert window-pixel coordinates (from a screenshot) to screen points.
-    Screenshot pixels are 2x on Retina; divide by scale to get screen points.
-    """
+    """Convert window-pixel coords to screen points. Screenshots are 2x on Retina."""
     bx, by, _, _ = window_bounds
     return bx + wx / scale, by + wy / scale

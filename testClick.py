@@ -171,7 +171,7 @@ def mode_activate(info, bounds, scale, match):
     im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
     time.sleep(0.2)   # let it come to front
 
-    print(f"  Clicking at ({sx:.0f}, {sy:.0f})")
+    print(f"  Clicking at ({sx:.0f}, {sy:.0f}) — cursor will warp back instantly")
     clicker.click_at(sx, sy, delay=0.1)
 
     time.sleep(0.1)
@@ -179,7 +179,7 @@ def mode_activate(info, bounds, scale, match):
     print(f"  Restoring '{prev_app.localizedName()}'...")
     prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
 
-    print("  Done — did the game respond?")
+    print("  Done — did the game respond? (cursor should be back where it was)")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
