@@ -35,7 +35,7 @@ IMAGES_DIR = "images"
 IMAGE_PATHS = {
     # Phase 1: Start / Ready
     "start":              os.path.join(IMAGES_DIR, "0_start_btn.png"),
-    "ready":              os.path.join(IMAGES_DIR, "0_ready_btn.jpg"),
+    "ready":              os.path.join(IMAGES_DIR, "0_ready_btn.png"),
 
     # Phase 2: Talent Glory (3-skill pick middle)
     "talent_glory":       os.path.join(IMAGES_DIR, "3_talent_glory.png"),
