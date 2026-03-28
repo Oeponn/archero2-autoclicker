@@ -136,10 +136,16 @@ class GameStateMachine:
     # ── State handlers ────────────────────────────────────────────────────────
 
     def _handle_idle(self, img) -> bool:
-        match = vision.find_template(img, self.templates.get("start"))
+        match, btn = None, None
+        for name in ("start", "ready"):
+            result = vision.find_template(img, self.templates.get(name))
+            if result:
+                match, btn = result, name
+                break
+
         if match:
             cx, cy, tw, th = match
-            self._log(f"Found start button at ({cx}, {cy})  size {tw}×{th}")
+            self._log(f"Found '{btn}' button at ({cx}, {cy})  size {tw}×{th} — clicking")
             self._click_at_pixel(cx, cy, img)
             time.sleep(config.POST_ACTION_DELAY)
             self.run_count += 1
