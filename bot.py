@@ -5,7 +5,8 @@ Main entry point. Finds the iPhone Mirroring window, loads templates,
 and runs the game state machine in a loop.
 
 Usage:
-    python bot.py
+    python bot.py           # normal run
+    python bot.py --test    # click/swipe test then click start button
 
 Stop:
     Ctrl+C in the terminal
@@ -26,6 +27,7 @@ import time
 import config
 import window as win_mod
 import vision
+import clicker_quartz as clicker
 from state_machine import GameStateMachine
 
 
@@ -73,6 +75,56 @@ def check_permissions() -> None:
         print("⚠️  Screen Recording permission may not be granted.")
         print("   Go to: System Settings → Privacy & Security → Screen Recording")
         print("   Add your Terminal app, then restart it.\n")
+
+
+# ── Test mode ────────────────────────────────────────────────────────────────
+
+def run_test(bounds: tuple, scale: float, templates: dict) -> None:
+    """
+    Diagnostic test: taps, swipes, then tries to click the start button.
+    Run with: python bot.py --test
+    """
+    bx, by, bw, bh = bounds
+    cx = bx + bw / 2          # screen-absolute center X
+    cy = by + bh / 2          # screen-absolute center Y
+
+    print("\n── Test: 3 taps at window center ───────────────────")
+    for i in range(1, 4):
+        print(f"  Tap {i}/3 at ({cx:.0f}, {cy:.0f})")
+        clicker.click_at(cx, cy)
+        time.sleep(0.6)
+
+    print("\n── Test: 3 swipes UP from center ───────────────────")
+    for i in range(1, 4):
+        start_y = by + bh * 0.75
+        end_y   = by + bh * 0.35
+        print(f"  Swipe up {i}/3  ({cx:.0f}, {start_y:.0f}) → ({cx:.0f}, {end_y:.0f})")
+        clicker.drag(cx, start_y, cx, end_y, duration=0.35)
+        time.sleep(0.8)
+
+    print("\n── Test: 3 swipes DOWN from center ─────────────────")
+    for i in range(1, 4):
+        start_y = by + bh * 0.35
+        end_y   = by + bh * 0.75
+        print(f"  Swipe down {i}/3  ({cx:.0f}, {start_y:.0f}) → ({cx:.0f}, {end_y:.0f})")
+        clicker.drag(cx, start_y, cx, end_y, duration=0.35)
+        time.sleep(0.8)
+
+    print("\n── Test: click start button ────────────────────────")
+    import vision as vis
+    img = win_mod.screenshot(win_mod.find_window(config.IPHONE_MIRRORING_WINDOW_NAME))
+    match = vis.find_template(img, templates.get("start"))
+    if match:
+        mx, my, tw, th = match
+        sx, sy = clicker.window_to_screen(mx, my, bounds, scale)
+        print(f"  Found start button at window pixel ({mx}, {my}) → screen ({sx:.0f}, {sy:.0f})")
+        clicker.click_at(sx, sy)
+        print("  Clicked!")
+    else:
+        print("  Start button not found in current screenshot.")
+        print("  Make sure the game is on the main menu with the Start button visible.")
+
+    print("\n── Test complete ────────────────────────────────────\n")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -127,6 +179,14 @@ def main() -> None:
     print("\nLoading reference images...")
     templates = vision.load_templates()
     print(f"✅ Loaded {len(templates)} templates.")
+
+    # ── Test mode ────────────────────────────────────────────────────────────
+    if "--test" in sys.argv:
+        print("\n⚡ TEST MODE — tapping, swiping, then clicking start button.")
+        print("   Switch to iPhone Mirroring now — starting in 3s...")
+        time.sleep(3)
+        run_test(bounds, scale, templates)
+        return
 
     # Instructions
     print()
