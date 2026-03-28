@@ -54,7 +54,11 @@ def find_template(
     if th > sh or tw > sw:
         return None
 
-    result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+    # Match in grayscale — removes colour differences between Mac-captured
+    # templates and WDA screenshots while preserving shape/texture detail.
+    ss_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+    tm_gray = cv2.cvtColor(template,   cv2.COLOR_BGR2GRAY)
+    result = cv2.matchTemplate(ss_gray, tm_gray, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
     if max_val >= threshold:
