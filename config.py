@@ -12,7 +12,7 @@ CONFIDENCE = 0.85  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
 
 # ── Timing ───────────────────────────────────────────────────────────────────
 POLL_INTERVAL = 0.5        # Seconds between detection cycles in battle
-CLICK_DELAY = 0.05         # Seconds between mousedown and mouseup
+CLICK_DELAY = 0.01         # Seconds between mousedown and mouseup (keep short to minimize cursor jump)
 POST_ACTION_DELAY = 1.5    # Seconds to wait after a major action (skill pick, etc.)
 ROULETTE_SPIN_WAIT = 3.0   # Seconds to wait for roulette spin animation
 DRAG_DURATION = 0.4        # Seconds for the swipe-up drag gesture

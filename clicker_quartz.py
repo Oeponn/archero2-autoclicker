@@ -24,7 +24,7 @@ def _post_hid(event) -> None:
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
-def click_at(screen_x: float, screen_y: float, pid: int = None, delay: float = 0.05) -> None:
+def click_at(screen_x: float, screen_y: float, pid: int = None, delay: float = 0.01) -> None:
     """
     Click at the given screen coordinates via HID event tap.
     Cursor warps back to its original position immediately after.

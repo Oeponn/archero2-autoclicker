@@ -169,10 +169,10 @@ def mode_activate(info, bounds, scale, match):
 
     print(f"  Activating '{im_app.localizedName()}' (PID {pid})...")
     im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-    time.sleep(0.2)   # let it come to front
+    time.sleep(0.05)
 
     print(f"  Clicking at ({sx:.0f}, {sy:.0f}) — cursor will warp back instantly")
-    clicker.click_at(sx, sy, delay=0.1)
+    clicker.click_at(sx, sy, delay=0.01)
 
     time.sleep(0.1)
 
@@ -182,11 +182,47 @@ def mode_activate(info, bounds, scale, match):
     print("  Done — did the game respond? (cursor should be back where it was)")
 
 
+# ── Window-targeted event (no cursor movement, no focus needed) ───────────────
+
+def mode_windowtarget(info, bounds, scale, match):
+    """
+    Post a click event annotated with the iPhone Mirroring CGWindowID.
+    Uses kCGAnnotatedSessionEventTap so macOS routes the event to that specific
+    window without moving the cursor or requiring it to be frontmost.
+    """
+    import Quartz as Q
+    import clicker_quartz as clicker
+
+    cx, cy, tw, th = match
+    sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
+    window_id = win_mod.get_window_id(info)
+
+    print(f"  Target window ID : {window_id}")
+    print(f"  Click at screen  : ({sx:.0f}, {sy:.0f})")
+
+    point = Q.CGPointMake(sx, sy)
+    source = Q.CGEventSourceCreate(Q.kCGEventSourceStatePrivate)
+
+    for event_type in (Q.kCGEventLeftMouseDown, Q.kCGEventLeftMouseUp):
+        event = Q.CGEventCreateMouseEvent(source, event_type, point, Q.kCGMouseButtonLeft)
+        # Annotate which window should receive this event
+        Q.CGEventSetIntegerValueField(
+            event, Q.kCGMouseEventWindowUnderMousePointer, window_id)
+        Q.CGEventSetIntegerValueField(
+            event, Q.kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent, window_id)
+        # Post at annotated-session level (after window routing is resolved)
+        Q.CGEventPost(Q.kCGAnnotatedSessionEventTap, event)
+        time.sleep(0.01)
+
+    print("  Done — cursor should NOT have moved. Did the game respond?")
+
+
 # ── Warp test ─────────────────────────────────────────────────────────────────
 
 def mode_warptest(info, bounds, scale):
     """Click randomly near window center every second for 10s, logging each click."""
     import random
+    import clicker_quartz as clicker
     from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
 
     bx, by, bw, bh = bounds
@@ -211,10 +247,10 @@ def mode_warptest(info, bounds, scale):
         # Activate, click, restore
         if im_app:
             im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-            time.sleep(0.15)
+            time.sleep(0.05)
 
         print(f"  [{i:02d}/10] click at screen ({sx:.0f}, {sy:.0f})", flush=True)
-        clicker.click_at(sx, sy, delay=0.05)
+        clicker.click_at(sx, sy, delay=0.01)
 
         if prev_app:
             prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
@@ -226,7 +262,7 @@ def mode_warptest(info, bounds, scale):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-MODES = ("info", "pyautogui", "quartz", "activate", "warptest")
+MODES = ("info", "pyautogui", "quartz", "activate", "warptest", "windowtarget")
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in MODES:
@@ -236,6 +272,22 @@ def main():
         sys.exit(1)
 
     method = sys.argv[1]
+
+    # warptest doesn't need templates or start button — just the window bounds
+    if method == "warptest":
+        info = win_mod.find_window(config.IPHONE_MIRRORING_WINDOW_NAME)
+        if info is None:
+            print("❌ iPhone Mirroring window not found.")
+            sys.exit(1)
+        bounds = win_mod.get_bounds(info)
+        scale  = win_mod.get_scale_factor()
+        print(f"✅ Window bounds: x={bounds[0]:.0f} y={bounds[1]:.0f} "
+              f"w={bounds[2]:.0f} h={bounds[3]:.0f}  scale={scale}x")
+        print(f"\nStarting warp test in 3 seconds — 10 clicks, 1 per second...")
+        time.sleep(3)
+        print("── Warp test ──")
+        mode_warptest(info, bounds, scale)
+        return
 
     print(f"\nLoading templates...")
     templates = vision.load_templates()
@@ -253,13 +305,6 @@ def main():
         mode_info(info, bounds, scale, match)
         return
 
-    if method == "warptest":
-        print(f"\nStarting warp test in 3 seconds — 10 clicks, 1 per second...")
-        time.sleep(3)
-        print("── Warp test ──")
-        mode_warptest(info, bounds, scale)
-        return
-
     print(f"\nStarting in 3 seconds...")
     time.sleep(3)
 
@@ -272,6 +317,9 @@ def main():
     elif method == "activate":
         print("── Activate + click + restore ──")
         mode_activate(info, bounds, scale, match)
+    elif method == "windowtarget":
+        print("── Window-targeted CGEvent (no cursor, no focus) ──")
+        mode_windowtarget(info, bounds, scale, match)
 
 
 if __name__ == "__main__":
