@@ -1,0 +1,6 @@
+pyobjc-framework-Quartz
+pyobjc-framework-Cocoa
+opencv-python
+Pillow
+numpy
+pyautogui          # kept for capture.py backward compat
