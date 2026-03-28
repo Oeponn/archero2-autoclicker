@@ -1,8 +1,10 @@
 """
 clicker_quartz.py — Quartz-based click and drag posting.
 
-Uses kCGEventSourceStatePrivate so events are delivered to the target window
-WITHOUT updating the global cursor position — your mouse stays put.
+Uses CGEventPostToPid to deliver events directly to a specific process.
+This does NOT move the visible mouse cursor and does NOT require the
+target window to be frontmost.
+
 All coordinates are in Quartz screen points (origin at top-left of main display).
 """
 
@@ -10,34 +12,26 @@ import time
 import Quartz
 
 
-def _private_source():
+def click_at(screen_x: float, screen_y: float, pid: int, delay: float = 0.05) -> None:
     """
-    Create an event source with private state.
-    Events created with this source do NOT update the global cursor position,
-    so your real mouse cursor stays wherever it is.
-    """
-    return Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
-
-
-def click_at(screen_x: float, screen_y: float, delay: float = 0.05) -> None:
-    """
-    Post a left-click at the given screen coordinates.
+    Post a left-click at the given screen coordinates directly to `pid`.
     The visible mouse cursor does NOT move.
+    The target window does NOT need to be frontmost.
     """
-    source = _private_source()
+    source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
     point  = Quartz.CGPointMake(screen_x, screen_y)
 
     event_down = Quartz.CGEventCreateMouseEvent(
         source, Quartz.kCGEventLeftMouseDown, point, Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_down)
+    Quartz.CGEventPostToPid(pid, event_down)
 
     time.sleep(delay)
 
     event_up = Quartz.CGEventCreateMouseEvent(
         source, Quartz.kCGEventLeftMouseUp, point, Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_up)
+    Quartz.CGEventPostToPid(pid, event_up)
 
 
 def drag(
@@ -45,20 +39,21 @@ def drag(
     start_y: float,
     end_x: float,
     end_y: float,
+    pid: int,
     duration: float = 0.3,
     steps: int = 20,
 ) -> None:
     """
-    Post a click-and-drag from (start_x, start_y) to (end_x, end_y).
+    Post a click-and-drag from (start_x, start_y) to (end_x, end_y) directly to `pid`.
     The visible mouse cursor does NOT move.
     """
-    source      = _private_source()
+    source      = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStatePrivate)
     start_point = Quartz.CGPointMake(start_x, start_y)
 
     event_down = Quartz.CGEventCreateMouseEvent(
         source, Quartz.kCGEventLeftMouseDown, start_point, Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_down)
+    Quartz.CGEventPostToPid(pid, event_down)
 
     step_delay = duration / steps
     for i in range(1, steps + 1):
@@ -69,14 +64,14 @@ def drag(
             source, Quartz.kCGEventLeftMouseDragged,
             Quartz.CGPointMake(ix, iy), Quartz.kCGMouseButtonLeft
         )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_drag)
+        Quartz.CGEventPostToPid(pid, event_drag)
         time.sleep(step_delay)
 
     event_up = Quartz.CGEventCreateMouseEvent(
         source, Quartz.kCGEventLeftMouseUp,
         Quartz.CGPointMake(end_x, end_y), Quartz.kCGMouseButtonLeft
     )
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event_up)
+    Quartz.CGEventPostToPid(pid, event_up)
 
 
 def window_to_screen(

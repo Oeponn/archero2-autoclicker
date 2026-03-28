@@ -10,7 +10,6 @@ States:
 import time
 from enum import Enum, auto
 
-from AppKit import NSWorkspace, NSApplicationActivateIgnoringOtherApps
 import config
 import window as win_mod
 import clicker_quartz as clicker
@@ -34,20 +33,11 @@ class GameStateMachine:
     def __init__(self, templates: dict, scale: float, window_pid: int):
         self.templates = templates
         self.scale = scale
-        self.window_pid = window_pid
+        self.pid = window_pid
         self.state = State.IDLE
         self.run_count = 0
         self._state_enter_time = time.time()
-        self._last_state_log = None
         self._last_heartbeat = 0.0
-
-        # Resolve NSRunningApplication objects once at startup
-        ws = NSWorkspace.sharedWorkspace()
-        self._im_app = None
-        for app in ws.runningApplications():
-            if app.processIdentifier() == window_pid:
-                self._im_app = app
-                break
 
     def _log(self, msg: str) -> None:
         print(f"  [{self.state.name}] {msg}", flush=True)
@@ -62,7 +52,6 @@ class GameStateMachine:
         return time.time() - self._state_enter_time
 
     def _heartbeat(self, interval: float = 5.0) -> None:
-        """Print a 'still scanning' message every `interval` seconds."""
         if time.time() - self._last_heartbeat >= interval:
             self._log("scanning...")
             self._last_heartbeat = time.time()
@@ -79,45 +68,24 @@ class GameStateMachine:
             return None
         return window_info, bounds, img
 
-    # ── Activate helpers ──────────────────────────────────────────────────────
-
-    def _activate_im(self) -> object:
-        """Bring iPhone Mirroring to front. Returns the previously active app."""
-        ws = NSWorkspace.sharedWorkspace()
-        prev = ws.frontmostApplication()
-        if self._im_app:
-            self._im_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-            time.sleep(0.15)   # let it come to front
-        return prev
-
-    def _restore_app(self, prev_app) -> None:
-        """Restore the previously active app to front."""
-        if prev_app and prev_app.processIdentifier() != self.window_pid:
-            prev_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-
     # ── Click helpers ─────────────────────────────────────────────────────────
 
     def _click_at_pixel(self, px: float, py: float, bounds: tuple) -> None:
-        """
-        Activate iPhone Mirroring, click at window-pixel coords, restore focus.
-        Uses kCGEventSourceStatePrivate so the cursor does not visibly move.
-        """
+        """Convert window-pixel coords to screen coords and click via CGEventPostToPid."""
         sx, sy = clicker.window_to_screen(px, py, bounds, self.scale)
         self._log(f"  click → window px ({px:.0f}, {py:.0f})  screen pt ({sx:.0f}, {sy:.0f})")
-        prev = self._activate_im()
-        clicker.click_at(sx, sy, delay=config.CLICK_DELAY)
-        self._restore_app(prev)
+        clicker.click_at(sx, sy, pid=self.pid, delay=config.CLICK_DELAY)
 
     def _click_skill_3_middle(self, banner_cx, banner_cy, banner_tw, banner_th, bounds):
         px = banner_cx + config.THREE_SKILL_MIDDLE_X_MULT * banner_tw
         py = banner_cy + config.THREE_SKILL_MIDDLE_Y_MULT * banner_th
-        self._log(f"Clicking MIDDLE skill (banner center {banner_cx:.0f},{banner_cy:.0f}  size {banner_tw}×{banner_th})")
+        self._log(f"Clicking MIDDLE skill (banner {banner_cx:.0f},{banner_cy:.0f} size {banner_tw}×{banner_th})")
         self._click_at_pixel(px, py, bounds)
 
     def _click_skill_2_left(self, banner_cx, banner_cy, banner_tw, banner_th, bounds):
         px = banner_cx + config.TWO_SKILL_LEFT_X_MULT * banner_tw
         py = banner_cy + config.TWO_SKILL_LEFT_Y_MULT * banner_th
-        self._log(f"Clicking LEFT skill (banner center {banner_cx:.0f},{banner_cy:.0f}  size {banner_tw}×{banner_th})")
+        self._log(f"Clicking LEFT skill (banner {banner_cx:.0f},{banner_cy:.0f} size {banner_tw}×{banner_th})")
         self._click_at_pixel(px, py, bounds)
 
     def _swipe_up(self, bounds: tuple) -> None:
@@ -125,22 +93,21 @@ class GameStateMachine:
         start_sx = bx + bw / 2
         start_sy = by + bh * 0.75
         end_sy   = by + bh * (0.75 - config.SWIPE_UP_FRACTION)
-        self._log(f"Swipe UP  screen ({start_sx:.0f}, {start_sy:.0f}) → ({start_sx:.0f}, {end_sy:.0f})")
-        prev = self._activate_im()
-        clicker.drag(start_sx, start_sy, start_sx, end_sy, duration=config.DRAG_DURATION)
-        self._restore_app(prev)
+        self._log(f"Swipe UP  ({start_sx:.0f}, {start_sy:.0f}) → ({start_sx:.0f}, {end_sy:.0f})")
+        clicker.drag(start_sx, start_sy, start_sx, end_sy,
+                     pid=self.pid, duration=config.DRAG_DURATION)
 
-    def _tap_screen(self, sx: float, sy: float, label: str = "", prev_app=None) -> None:
-        self._log(f"Tap {label} screen ({sx:.0f}, {sy:.0f})")
-        clicker.click_at(sx, sy, delay=config.CLICK_DELAY)
+    def _tap_screen(self, sx: float, sy: float, label: str = "") -> None:
+        self._log(f"Tap {label} ({sx:.0f}, {sy:.0f})")
+        clicker.click_at(sx, sy, pid=self.pid, delay=config.CLICK_DELAY)
 
-    def _tap_window_center(self, bounds: tuple, prev_app=None) -> None:
+    def _tap_window_center(self, bounds: tuple) -> None:
         bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh / 2, "center", prev_app)
+        self._tap_screen(bx + bw / 2, by + bh / 2, "center")
 
-    def _tap_window_lower(self, bounds: tuple, prev_app=None) -> None:
+    def _tap_window_lower(self, bounds: tuple) -> None:
         bx, by, bw, bh = bounds
-        self._tap_screen(bx + bw / 2, by + bh * 0.85, "lower-center", prev_app)
+        self._tap_screen(bx + bw / 2, by + bh * 0.85, "lower-center")
 
     # ── Main tick ─────────────────────────────────────────────────────────────
 
@@ -199,7 +166,6 @@ class GameStateMachine:
         return True
 
     def _handle_starting(self, img, bounds) -> bool:
-        """Wait for talent glory screen. If it doesn't appear, assume click failed → retry IDLE."""
         match = vision.find_template(img, self.templates.get("talent_glory"))
         if match:
             self._log("Talent Glory screen detected")
@@ -207,14 +173,12 @@ class GameStateMachine:
             return True
 
         if self._state_elapsed() > config.STATE_TIMEOUT:
-            # Check for roulette (some runs skip talent glory)
             if vision.find_template(img, self.templates.get("roulette_banner")):
                 self._log("Skipped to Roulette")
                 self._set_state(State.ROULETTE)
                 return True
-            # Check if battle already started
-            self._log("No talent glory / roulette detected — click may not have registered, retrying from IDLE")
-            self.run_count -= 1   # undo the run count increment
+            self._log("No talent glory / roulette — click may not have registered, retrying")
+            self.run_count -= 1
             self._set_state(State.IDLE)
 
         self._heartbeat()
@@ -241,26 +205,22 @@ class GameStateMachine:
         if match:
             cx, cy, tw, th = match
             self._log(f"Found Roulette Start at window px ({cx}, {cy})")
-            prev = self._activate_im()
             self._click_at_pixel(cx, cy, bounds)
             time.sleep(config.ROULETTE_SPIN_WAIT)
             self._tap_window_center(bounds)
             time.sleep(1.0)
             self._tap_window_center(bounds)
-            self._restore_app(prev)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
 
         if vision.find_template(img, self.templates.get("roulette_banner")):
-            self._log("Roulette banner found but no Start button — tapping center")
-            prev = self._activate_im()
+            self._log("Roulette banner visible, no Start button — tapping center")
             self._tap_window_center(bounds)
             time.sleep(config.ROULETTE_SPIN_WAIT)
             self._tap_window_center(bounds)
             time.sleep(1.0)
             self._tap_window_center(bounds)
-            self._restore_app(prev)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
             return True
@@ -273,37 +233,27 @@ class GameStateMachine:
         return True
 
     def _handle_battling(self, img, bounds) -> bool:
-        # 1. Ending screens (highest priority)
         ending = vision.find_any(img, self.templates, ["tap_empty", "reward"])
         if ending:
-            self._log(f"Ending screen detected: '{ending[0]}'")
+            self._log(f"Ending screen: '{ending[0]}'")
             self._set_state(State.ENDING)
             return True
-
-        # 2. Level up
         if vision.find_template(img, self.templates.get("level_up")):
             self._log("Level Up!")
             self._set_state(State.LEVEL_UP)
             return True
-
-        # 3. Valkyrie
         if vision.find_template(img, self.templates.get("valkyrie")):
             self._log("Valkyrie encountered")
             self._set_state(State.VALKYRIE)
             return True
-
-        # 4. Angel
         if vision.find_template(img, self.templates.get("angel")):
             self._log("Angel encountered")
             self._set_state(State.ANGEL)
             return True
-
-        # 5. Devil
         if vision.find_template(img, self.templates.get("devil")):
             self._log("Devil encountered")
             self._set_state(State.DEVIL)
             return True
-
         self._heartbeat()
         return True
 
@@ -338,12 +288,12 @@ class GameStateMachine:
         match = vision.find_template(img, self.templates.get("reject"))
         if match:
             cx, cy, tw, th = match
-            self._log(f"Found Reject button at window px ({cx}, {cy})")
+            self._log(f"Found Reject at window px ({cx}, {cy})")
             self._click_at_pixel(cx, cy, bounds)
             time.sleep(config.POST_ACTION_DELAY)
             self._set_state(State.BATTLING)
         elif self._state_elapsed() > config.STATE_TIMEOUT:
-            self._log("Reject button not found after timeout, returning to BATTLING")
+            self._log("Reject not found after timeout, returning to BATTLING")
             self._set_state(State.BATTLING)
         else:
             self._heartbeat()
@@ -351,15 +301,12 @@ class GameStateMachine:
 
     def _handle_ending(self, img, bounds) -> bool:
         self._log("Tapping to dismiss ending screens (3×)")
-        prev = self._activate_im()
         for i in range(1, 4):
             self._tap_window_lower(bounds)
             self._log(f"Tap {i}/3")
             time.sleep(config.ENDING_TAP_DELAY)
-        self._restore_app(prev)
 
         print(f"  Run #{self.run_count} complete.")
-
         if self.run_count >= config.MAX_RUNS:
             print(f"\n  Reached max runs ({config.MAX_RUNS}). Stopping.")
             return False

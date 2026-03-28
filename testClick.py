@@ -124,15 +124,16 @@ def mode_pyautogui(bounds, scale, match):
     print("  Done.")
 
 
-# ── Quartz CGEventPost ────────────────────────────────────────────────────────
+# ── Quartz CGEventPostToPid ───────────────────────────────────────────────────
 
-def mode_quartz(bounds, scale, match):
+def mode_quartz(info, bounds, scale, match):
     import clicker_quartz as clicker
     cx, cy, tw, th = match
     sx, sy = clicker.window_to_screen(cx, cy, bounds, scale)
-    print(f"  CGEventPost click at ({sx:.0f}, {sy:.0f})")
-    clicker.click_at(sx, sy, delay=0.1)
-    print("  Done.")
+    pid = win_mod.get_pid(info)
+    print(f"  CGEventPostToPid({pid}) click at ({sx:.0f}, {sy:.0f})")
+    clicker.click_at(sx, sy, pid=pid, delay=0.1)
+    print("  Done — cursor should NOT have moved.")
 
 
 # ── Activate + click + restore ────────────────────────────────────────────────
@@ -217,8 +218,8 @@ def main():
         print("── pyautogui (mouse hijack) ──")
         mode_pyautogui(bounds, scale, match)
     elif method == "quartz":
-        print("── Quartz CGEventPost ──")
-        mode_quartz(bounds, scale, match)
+        print("── Quartz CGEventPostToPid (no cursor movement) ──")
+        mode_quartz(info, bounds, scale, match)
     elif method == "activate":
         print("── Activate + click + restore ──")
         mode_activate(info, bounds, scale, match)
