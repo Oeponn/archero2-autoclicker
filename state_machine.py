@@ -148,6 +148,23 @@ class GameStateMachine:
             self._log(f"Found '{btn}' button at ({cx}, {cy})  size {tw}×{th} — clicking")
             self._click_at_pixel(cx, cy, img)
             time.sleep(config.POST_ACTION_DELAY)
+
+            # Ready flow: after clicking Ready the game shows a Start button next
+            if btn == "ready":
+                self._log("Waiting for Start button after Ready...")
+                for _ in range(10):
+                    time.sleep(1)
+                    img2 = clicker.screenshot()
+                    start_match = vision.find_template(img2, self.templates.get("start"))
+                    if start_match:
+                        sx, sy, stw, sth = start_match
+                        self._log(f"Found 'start' after ready at ({sx}, {sy}) — clicking")
+                        self._click_at_pixel(sx, sy, img2)
+                        time.sleep(config.POST_ACTION_DELAY)
+                        break
+                else:
+                    self._log("Start button not found after Ready — continuing anyway")
+
             self.run_count += 1
             print(f"\n{'='*50}")
             print(f"  Run #{self.run_count} / {config.MAX_RUNS}")
