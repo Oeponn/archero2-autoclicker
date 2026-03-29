@@ -10,8 +10,7 @@ IPHONE_MIRRORING_WINDOW_NAME = "iPhone Mirroring"
 # ── Image Matching ───────────────────────────────────────────────────────────
 CONFIDENCE = 0.65  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
 
-# Resolution the reference images were captured at (Mac retina window, 2x scale).
-# WDA screenshots are resized to this before template matching.
+# Resolution WDA screenshots are resized to before template matching.
 TEMPLATE_W = 652
 TEMPLATE_H = 1440
 
@@ -39,28 +38,33 @@ NATIVE_IMAGES_DIR = "images_native"
 NATIVE_W = 1206   # Native / WDA screenshot width  (iPhone 16 Pro portrait)
 NATIVE_H = 2622   # Native / WDA screenshot height
 
+def _n(name: str) -> str:
+    """Return path for a native iOS screenshot in images_native/."""
+    return os.path.join(NATIVE_IMAGES_DIR, name)
+
 IMAGE_PATHS = {
     # Phase 1: Start / Ready
-    "start":              os.path.join(IMAGES_DIR, "0_start_btn.png"),
-    "ready":              os.path.join(IMAGES_DIR, "0_ready_btn.png"),
+    "start":              _n("0_start_btn.jpg"),
+    "ready":              _n("0_ready_btn.jpg"),
 
     # Phase 2: Talent Glory (3-skill pick middle)
-    "talent_glory":       os.path.join(IMAGES_DIR, "3_talent_glory.png"),
+    "talent_glory":       _n("3_talent_glory.jpg"),
 
     # Phase 3: Roulette
-    "roulette_banner":    os.path.join(IMAGES_DIR, "a_roulette_banner.png"),
-    "roulette_start":     os.path.join(IMAGES_DIR, "a_roulette_start.png"),
+    "roulette_banner":    _n("a_roulette_banner.jpg"),
+    "roulette_start":     _n("a_roulette_start.jpg"),
 
     # Battle events
-    "level_up":           os.path.join(IMAGES_DIR, "3_level_up.png"),
-    "valkyrie":           os.path.join(IMAGES_DIR, "2_encountered_valkyrie.png"),
-    "angel":              os.path.join(IMAGES_DIR, "2_met_an_angel.png"),
-    "devil":              os.path.join(IMAGES_DIR, "1_met_a_devil.png"),
-    "reject":             os.path.join(IMAGES_DIR, "1_reject.png"),
+    "level_up":           _n("3_level_up.jpg"),
+    "valkyrie":           _n("2_encountered_valkyrie.jpg"),
+    "angel":              _n("2_met_an_angel.jpg"),
+    "devil":              _n("1_met_a_devil.jpg"),
+    "reject":             _n("1_reject.jpg"),
 
     # Ending
-    "tap_empty":          os.path.join(IMAGES_DIR, "ending_tap_empty.png"),
-    "reward":             os.path.join(IMAGES_DIR, "ending_reward.png"),
+    "challenge_ended":    _n("ending_challenge_ended.jpg"),
+    "tap_empty":          _n("ending_tap_empty.jpg"),
+    "reward":             _n("ending_reward.jpg"),
 }
 
 # ── Skill Click Offsets ──────────────────────────────────────────────────────

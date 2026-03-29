@@ -99,8 +99,9 @@ class GameStateMachine:
 
     def _tap_lower(self, img) -> None:
         h, w = img.shape[:2]
-        self._log(f"Tap lower-center ({w//2}, {h*0.85:.0f})")
-        clicker.click_at(w / 2, h * 0.85, w, h, delay=config.CLICK_DELAY)
+        # Tap at 95% down — below the rewards panel, into the empty area
+        self._log(f"Tap lower-center ({w//2}, {h*0.95:.0f})")
+        clicker.click_at(w / 2, h * 0.95, w, h, delay=config.CLICK_DELAY)
 
     # ── Main tick ─────────────────────────────────────────────────────────────
 
@@ -193,7 +194,7 @@ class GameStateMachine:
             self.run_count += 1
             self._set_state(State.DEVIL)
             return True
-        if vision.find_any(img, self.templates, ["tap_empty", "reward"]):
+        if vision.find_any(img, self.templates, ["challenge_ended", "tap_empty", "reward"]):
             self._log("Detected mid-game: Ending screen — resuming")
             self.run_count += 1
             self._set_state(State.ENDING)
@@ -269,7 +270,7 @@ class GameStateMachine:
         return True
 
     def _handle_battling(self, img) -> bool:
-        if vision.find_any(img, self.templates, ["tap_empty", "reward"]):
+        if vision.find_any(img, self.templates, ["challenge_ended", "tap_empty", "reward"]):
             self._log("Ending screen detected")
             self._set_state(State.ENDING)
             return True
