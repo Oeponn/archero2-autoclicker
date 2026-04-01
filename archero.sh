@@ -9,14 +9,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WDA_PROJECT="/Users/tigershi/.nvm/versions/node/v24.14.0/lib/node_modules/appium-webdriveragent/WebDriverAgent.xcodeproj"
 DEVICE_ID="6840900E-4B5C-5227-83FC-C6807F032E03"
-WDA_URL="http://localhost:8100"
+WDA_URL="http://192.168.0.11:8100"
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
     echo ""
-    echo "  Stopping WDA and iproxy..."
-    kill "$WDA_PID" "$IPROXY_PID" 2>/dev/null || true
-    wait "$WDA_PID" "$IPROXY_PID" 2>/dev/null || true
+    echo "  Stopping WDA..."
+    kill "$WDA_PID" 2>/dev/null || true
+    wait "$WDA_PID" 2>/dev/null || true
     echo "  Done."
 }
 trap cleanup EXIT INT TERM
@@ -38,11 +38,6 @@ xcodebuild test \
     -destination "id=$DEVICE_ID" \
     > /tmp/wda.log 2>&1 &
 WDA_PID=$!
-
-# ── Start iproxy ─────────────────────────────────────────────────────────────
-echo "  Starting port forward (iproxy 8100)..."
-iproxy 8100 8100 > /tmp/iproxy.log 2>&1 &
-IPROXY_PID=$!
 
 # ── Wait for WDA to be ready ─────────────────────────────────────────────────
 echo "  Waiting for WDA to start (this takes ~15s)..."

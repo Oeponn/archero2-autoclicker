@@ -8,7 +8,7 @@ import os
 IPHONE_MIRRORING_WINDOW_NAME = "iPhone Mirroring"
 
 # ── Image Matching ───────────────────────────────────────────────────────────
-CONFIDENCE = 0.65  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
+CONFIDENCE = 0.75  # OpenCV TM_CCOEFF_NORMED threshold (0–1)
 
 # Resolution WDA screenshots are resized to before template matching.
 TEMPLATE_W = 652

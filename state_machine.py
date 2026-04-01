@@ -136,7 +136,29 @@ class GameStateMachine:
 
     # ── State handlers ────────────────────────────────────────────────────────
 
+    def _detect_state(self, img) -> State | None:
+        """
+        Scan the current screenshot against every known template and return
+        the state it corresponds to, or None if nothing is recognised.
+        """
+        if vision.find_any(img, self.templates, ["challenge_ended", "tap_empty", "reward"]):
+            return State.ENDING
+        if vision.find_template(img, self.templates.get("talent_glory")):
+            return State.TALENT_GLORY
+        if vision.find_template(img, self.templates.get("roulette_banner")):
+            return State.ROULETTE
+        if vision.find_template(img, self.templates.get("level_up")):
+            return State.LEVEL_UP
+        if vision.find_template(img, self.templates.get("valkyrie")):
+            return State.VALKYRIE
+        if vision.find_template(img, self.templates.get("angel")):
+            return State.ANGEL
+        if vision.find_template(img, self.templates.get("devil")):
+            return State.DEVIL
+        return None
+
     def _handle_idle(self, img) -> bool:
+        # ── Check for start / ready buttons ───────────────────────────────────
         match, btn = None, None
         for name in ("start", "ready"):
             result = vision.find_template(img, self.templates.get(name))
@@ -173,36 +195,27 @@ class GameStateMachine:
             self._set_state(State.STARTING)
             return True
 
-        # Mid-game resume: bot started while a run is already in progress
-        if vision.find_template(img, self.templates.get("talent_glory")):
-            self._log("Detected mid-game: Talent Glory — resuming")
+        # ── Mid-game resume: scan all known screens ────────────────────────────
+        detected = self._detect_state(img)
+        if detected is not None:
+            self._log(f"Detected mid-run screen: {detected.name} — resuming")
             self.run_count += 1
-            self._set_state(State.TALENT_GLORY)
-            return True
-        if vision.find_template(img, self.templates.get("roulette_banner")):
-            self._log("Detected mid-game: Roulette — resuming")
-            self.run_count += 1
-            self._set_state(State.ROULETTE)
-            return True
-        if vision.find_template(img, self.templates.get("level_up")):
-            self._log("Detected mid-game: Level Up — resuming")
-            self.run_count += 1
-            self._set_state(State.LEVEL_UP)
-            return True
-        if vision.find_template(img, self.templates.get("devil")):
-            self._log("Detected mid-game: Devil — resuming")
-            self.run_count += 1
-            self._set_state(State.DEVIL)
-            return True
-        if vision.find_any(img, self.templates, ["challenge_ended", "tap_empty", "reward"]):
-            self._log("Detected mid-game: Ending screen — resuming")
-            self.run_count += 1
-            self._set_state(State.ENDING)
+            self._set_state(detected)
             return True
 
+        # ── Nothing recognised: if a game is in progress, we're mid-battle ────
+        # No start/ready button means we're not at the home screen, so assume
+        # we're in battle with nothing currently on screen.
         if self._state_elapsed() > config.IDLE_TIMEOUT:
             self._log(f"No start button found for {config.IDLE_TIMEOUT}s — stopping.")
             return False
+
+        # After a short grace period, if still no known screen → assume BATTLING
+        if self._state_elapsed() > 5:
+            self._log("No screen recognised — assuming mid-battle, resuming")
+            self.run_count += 1
+            self._set_state(State.BATTLING)
+            return True
 
         self._heartbeat()
         return True

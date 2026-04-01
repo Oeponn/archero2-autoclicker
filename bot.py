@@ -150,10 +150,8 @@ def main() -> None:
     # Connect to WDA
     print("\nConnecting to WebDriverAgent (WDA)...")
     if not clicker.init():
-        print("❌ Could not connect to WDA on http://localhost:8100")
-        print("   Make sure two background tabs are running:")
-        print("   Tab 1: xcodebuild test -scheme WebDriverAgentRunner ...")
-        print("   Tab 2: iproxy 8100 8100")
+        print(f"❌ Could not connect to WDA on {clicker.WDA_URL}")
+        print("   Make sure archero.sh is running and WDA started successfully.")
         sys.exit(1)
     print("✅ WDA ready.")
 

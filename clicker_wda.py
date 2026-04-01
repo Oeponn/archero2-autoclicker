@@ -1,12 +1,11 @@
 """
 clicker_wda.py — WebDriverAgent-based touch injection for iPhone.
 
-Sends touch events directly to the iPhone via WDA REST API over USB.
+Sends touch events directly to the iPhone via WDA REST API over WiFi.
 Zero cursor movement, zero focus stealing.
 
 Requirements:
-  - Tab 1: xcodebuild test -scheme WebDriverAgentRunner ... (keep running)
-  - Tab 2: iproxy 8100 8100                                (keep running)
+  - WDA running on the phone (started by archero.sh via xcodebuild)
 """
 
 import base64
@@ -14,7 +13,7 @@ import cv2
 import numpy as np
 import requests
 
-WDA_URL = "http://localhost:8100"
+WDA_URL = "http://192.168.0.11:8100"
 
 _session_id: str | None = None
 _iphone_w: int = 402
