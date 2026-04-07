@@ -35,6 +35,7 @@ class GameStateMachine:
         self.run_count = 0
         self._state_enter_time = time.time()
         self._last_heartbeat = 0.0
+        self._consecutive_failures = 0
 
     def _log(self, msg: str) -> None:
         print(f"  [{self.state.name}] {msg}", flush=True)
@@ -108,9 +109,14 @@ class GameStateMachine:
     def tick(self) -> bool:
         img = self._get_screenshot()
         if img is None:
-            self._log("WDA screenshot failed, waiting...")
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= 10:
+                print(f"\n  ❌ WDA unreachable for {self._consecutive_failures * 2}s — stopping.")
+                return False
+            self._log(f"WDA screenshot failed ({self._consecutive_failures}/10), waiting...")
             time.sleep(2)
             return True
+        self._consecutive_failures = 0
 
         if self.state == State.IDLE:
             return self._handle_idle(img)

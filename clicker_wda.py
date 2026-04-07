@@ -28,7 +28,7 @@ def _get_session() -> str:
             if r.status_code == 200:
                 return _session_id
         except Exception:
-            pass
+            _session_id = None
     r = requests.post(f"{WDA_URL}/session", json={"capabilities": {}}, timeout=5)
     data = r.json()
     _session_id = data["sessionId"]
@@ -84,24 +84,27 @@ def _to_wda(px: float, py: float, win_pixel_w: float, win_pixel_h: float) -> tup
 
 def click_at(px: float, py: float, win_pixel_w: float, win_pixel_h: float,
              delay: float = 0.05) -> None:
-    """Tap at window-pixel (px, py). No cursor movement."""
-    session = _get_session()
-    x, y = _to_wda(px, py, win_pixel_w, win_pixel_h)
-    pause_ms = max(50, int(delay * 1000))
-    payload = {
-        "actions": [{
-            "type": "pointer",
-            "id": "finger1",
-            "parameters": {"pointerType": "touch"},
-            "actions": [
-                {"type": "pointerMove", "duration": 0, "x": x, "y": y},
-                {"type": "pointerDown", "button": 0},
-                {"type": "pause", "duration": pause_ms},
-                {"type": "pointerUp", "button": 0},
-            ],
-        }]
-    }
-    requests.post(f"{WDA_URL}/session/{session}/actions", json=payload, timeout=5)
+    """Tap at window-pixel (px, py). No cursor movement. Silently fails if WDA is down."""
+    try:
+        session = _get_session()
+        x, y = _to_wda(px, py, win_pixel_w, win_pixel_h)
+        pause_ms = max(50, int(delay * 1000))
+        payload = {
+            "actions": [{
+                "type": "pointer",
+                "id": "finger1",
+                "parameters": {"pointerType": "touch"},
+                "actions": [
+                    {"type": "pointerMove", "duration": 0, "x": x, "y": y},
+                    {"type": "pointerDown", "button": 0},
+                    {"type": "pause", "duration": pause_ms},
+                    {"type": "pointerUp", "button": 0},
+                ],
+            }]
+        }
+        requests.post(f"{WDA_URL}/session/{session}/actions", json=payload, timeout=5)
+    except Exception:
+        pass
 
 
 def drag(
@@ -110,22 +113,25 @@ def drag(
     win_pixel_w: float, win_pixel_h: float,
     duration: float = 0.4,
 ) -> None:
-    """Swipe from (start_px, start_py) to (end_px, end_py) in window-pixel coords."""
-    session = _get_session()
-    sx, sy = _to_wda(start_px, start_py, win_pixel_w, win_pixel_h)
-    ex, ey = _to_wda(end_px, end_py, win_pixel_w, win_pixel_h)
-    duration_ms = max(200, int(duration * 1000))
-    payload = {
-        "actions": [{
-            "type": "pointer",
-            "id": "finger1",
-            "parameters": {"pointerType": "touch"},
-            "actions": [
-                {"type": "pointerMove", "duration": 0, "x": sx, "y": sy},
-                {"type": "pointerDown", "button": 0},
-                {"type": "pointerMove", "duration": duration_ms, "x": ex, "y": ey},
-                {"type": "pointerUp", "button": 0},
-            ],
-        }]
-    }
-    requests.post(f"{WDA_URL}/session/{session}/actions", json=payload, timeout=10)
+    """Swipe from (start_px, start_py) to (end_px, end_py). Silently fails if WDA is down."""
+    try:
+        session = _get_session()
+        sx, sy = _to_wda(start_px, start_py, win_pixel_w, win_pixel_h)
+        ex, ey = _to_wda(end_px, end_py, win_pixel_w, win_pixel_h)
+        duration_ms = max(200, int(duration * 1000))
+        payload = {
+            "actions": [{
+                "type": "pointer",
+                "id": "finger1",
+                "parameters": {"pointerType": "touch"},
+                "actions": [
+                    {"type": "pointerMove", "duration": 0, "x": sx, "y": sy},
+                    {"type": "pointerDown", "button": 0},
+                    {"type": "pointerMove", "duration": duration_ms, "x": ex, "y": ey},
+                    {"type": "pointerUp", "button": 0},
+                ],
+            }]
+        }
+        requests.post(f"{WDA_URL}/session/{session}/actions", json=payload, timeout=10)
+    except Exception:
+        pass

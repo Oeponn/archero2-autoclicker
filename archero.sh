@@ -36,6 +36,7 @@ xcodebuild test \
     -project "$WDA_PROJECT" \
     -scheme WebDriverAgentRunner \
     -destination "id=$DEVICE_ID" \
+    -allowProvisioningUpdates \
     > /tmp/wda.log 2>&1 &
 WDA_PID=$!
 
