@@ -13,7 +13,8 @@ import cv2
 import numpy as np
 import requests
 
-WDA_URL = "http://192.168.0.11:8100"
+import os
+WDA_URL = os.environ.get("WDA_URL", "http://192.168.0.11:8100")
 
 _session_id: str | None = None
 _iphone_w: int = 402
