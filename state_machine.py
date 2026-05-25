@@ -297,6 +297,10 @@ class GameStateMachine:
             self._log("Level Up!")
             self._set_state(State.LEVEL_UP)
             return True
+        if vision.find_template(img, self.templates.get("roulette_banner")):
+            self._log("Roulette spawned mid-battle")
+            self._set_state(State.ROULETTE)
+            return True
         if vision.find_template(img, self.templates.get("valkyrie")):
             self._log("Valkyrie encountered")
             self._set_state(State.VALKYRIE)
