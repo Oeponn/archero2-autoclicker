@@ -64,7 +64,7 @@ if [[ "$USB_MODE" == true ]]; then
 else
     # WiFi mode: extract phone IP from WDA log once it starts
     echo "  WiFi mode: waiting for phone IP from WDA..."
-    for i in $(seq 1 60); do
+    for i in $(seq 1 180); do
         PHONE_IP="$(grep -o 'ServerURLHere->http://[^:]*' /tmp/wda.log 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)"
         if [[ -n "$PHONE_IP" ]]; then break; fi
         if ! kill -0 "$WDA_PID" 2>/dev/null; then
@@ -83,7 +83,7 @@ fi
 
 # ── Wait for WDA to be ready ─────────────────────────────────────────────────
 echo "  Waiting for WDA to be ready..."
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
     if curl -s --max-time 1 "$WDA_URL/status" | grep -q '"ready"'; then
         break
     fi
