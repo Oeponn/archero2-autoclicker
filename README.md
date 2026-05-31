@@ -92,6 +92,8 @@ open "$(npm root -g)/appium-webdriveragent/WebDriverAgent.xcodeproj"
 
 In Xcode, select **WebDriverAgentRunner** → **Signing & Capabilities** → click **Try Again** (or toggle the team off and back on). Do the same for **WebDriverAgentLib**. Close Xcode and run `./archero.sh` again.
 
+In practice this only prompted for a re-sign once or twice early on — since then it's just kept working without intervention.
+
 ---
 
 ## Troubleshooting
